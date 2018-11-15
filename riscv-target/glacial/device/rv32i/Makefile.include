@@ -1,0 +1,45 @@
+# leave definition of USE_SIMG empty to use Verilator
+USE_SIMG =
+
+ifdef USE_SIMG
+  # use simg (microarchitecture simulator in Python)
+
+  TARGET_SIM ?= /home/eric/projects/glacial/ucode/tools/simg
+  ifeq ($(shell command -v $(TARGET_SIM) 2> /dev/null),)
+      $(error Target simulator executable '$(TARGET_SIM)` not found)
+  endif
+
+  RUN_TARGET=\
+	$(TARGET_SIM) \
+        $(work_dir_isa)/$< 2> $(work_dir_isa)/$@ 1>$(work_dir_isa)/$(*).signature.output
+
+else
+  # use Verilator
+
+  TARGET_SIM ?= $(GLACIAL)/verilog/obj_dir/Vtestbench
+  ifeq ($(shell command -v $(TARGET_SIM) 2> /dev/null),)
+      $(error Target simulator executable '$(TARGET_SIM)` not found)
+  endif
+
+  RUN_TARGET=\
+        $(GLACIAL)/ucode/tools/vmem -o sram.mem $(work_dir_isa)/$< ; \
+	$(TARGET_SIM) 2>$(work_dir_isa)/$@ | grep -v "Verilog $$finish" >$(work_dir_isa)/$(*).signature.output
+
+endif
+
+
+RISCV_PREFIX   ?= riscv32-unknown-elf-
+RISCV_GCC      ?= $(RISCV_PREFIX)gcc
+RISCV_OBJDUMP  ?= $(RISCV_PREFIX)objdump
+RISCV_OBJCOPY  ?= $(RISCV_PREFIX)objcopy
+RISCV_GCC_OPTS ?= -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles
+
+COMPILE_TARGET=\
+	$$(RISCV_GCC) $(2) $$(RISCV_GCC_OPTS) \
+		-I$(ROOTDIR)/riscv-test-env/ \
+		-I$(ROOTDIR)/riscv-test-env/p/ \
+		-I$(ROOTDIR)/riscv-target/$(RISCV_TARGET)/ \
+		-T$(ROOTDIR)/riscv-target/$(RISCV_TARGET)/device/rv32i/link.ld $$< \
+		-o $(work_dir_isa)/$$@; \
+	$$(RISCV_OBJDUMP) -D $(work_dir_isa)/$$@ > $(work_dir_isa)/`basename $$@ .elf`.objdump; \
+	$$(RISCV_OBJCOPY) -O binary $(work_dir_isa)/$$@ $(work_dir_isa)/`basename $$@ .elf`.bin
